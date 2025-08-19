@@ -29,8 +29,9 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
   const [sessions, setSessions] = useState<StudySession[]>([]);
 
   // New refs for accurate timing
-  const startTimestamp = useRef<number | null>(null); // in ms
-  const pauseOffset = useRef<number>(0); // ms spent paused
+  const startTimestamp = useRef<number | null>(null); // wall clock start
+  const pauseOffset = useRef<number>(0); // ms
+  const pauseStarted = useRef<number | null>(null); // wall clock time when paused
   const intervalRef = useRef<NodeJS.Timeout>();
 
   // Load sessions from localStorage on mount
@@ -92,25 +93,30 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
     setIsRunning(false);
     startTimestamp.current = null;
     pauseOffset.current = 0;
+    pauseStarted.current = null;
   };
 
   const handleStart = () => {
     if (!isConfigured) return;
+
     setIsRunning(true);
 
     // If not started yet, record start, else resume from pause
     if (startTimestamp.current === null) {
       startTimestamp.current = Date.now();
       pauseOffset.current = 0;
-    } else {
-      // Was paused, so subtract the paused duration
-      pauseOffset.current += Date.now() - (startTimestamp.current + (initialTime - time) * 1000 + pauseOffset.current);
+      pauseStarted.current = null;
+    } else if (pauseStarted.current !== null) {
+      pauseOffset.current += Date.now() - pauseStarted.current;
+      pauseStarted.current = null;
     }
   };
 
   const handlePause = () => {
     setIsRunning(false);
-    // pauseOffset will be handled on resume
+    if (pauseStarted.current === null) {
+      pauseStarted.current = Date.now();
+    }
   };
 
   const handleStop = () => {
@@ -132,6 +138,7 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
     setCustomDuration(25);
     startTimestamp.current = null;
     pauseOffset.current = 0;
+    pauseStarted.current = null;
   };
 
   const handleTimerComplete = () => {
