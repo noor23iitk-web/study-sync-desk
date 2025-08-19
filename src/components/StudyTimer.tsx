@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useEffect, useRef } from "react";
 import { Play, Pause, Square, RotateCcw, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,17 +25,20 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
   const [time, setTime] = useState(0);
   const [initialTime, setInitialTime] = useState(0);
   const [sessionName, setSessionName] = useState("");
-  const [customDuration, setCustomDuration] = useState(25); // in minutes
+  const [customDuration, setCustomDuration] = useState(25); // minutes
   const [isConfigured, setIsConfigured] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [sessions, setSessions] = useState<StudySession[]>([]);
 
-  // Accurate timing refs
-  const startTimestamp = useRef<number | null>(null);
-  const pauseOffset = useRef<number>(0);
-  const pauseStarted = useRef<number | null>(null);
+  // ---- Accurate timing refs (monotonic, not affected by tab throttling) ----
+  const endAtMsRef = useRef<number | null>(null);            // performance.now() timestamp when timer should hit 0
+  const pauseStartedMsRef = useRef<number | null>(null);     // performance.now() when paused
 
-  // Load sessions from localStorage on mount
+  // Animation/update handles
+  const rafIdRef = useRef<number | null>(null);
+  const intervalIdRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ---------- Storage ----------
   useEffect(() => {
     const saved = localStorage.getItem("studyfocus-sessions");
     if (saved) {
@@ -47,40 +52,75 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
     }
   }, []);
 
-  // Save sessions to localStorage when updated
   useEffect(() => {
     localStorage.setItem("studyfocus-sessions", JSON.stringify(sessions));
   }, [sessions]);
 
-  // Timer effect using requestAnimationFrame
+  // ---------- Helpers ----------
+  const nowMs = () => performance.now();
+
+  const updateFromClock = () => {
+    if (endAtMsRef.current == null) return;
+
+    const leftSec = Math.ceil((endAtMsRef.current - nowMs()) / 1000);
+    if (leftSec <= 0) {
+      setTime(0);
+      setIsRunning(false);
+      stopLoops();
+      handleTimerComplete();
+    } else {
+      setTime(leftSec);
+    }
+  };
+
+  const startLoops = () => {
+    stopLoops(); // ensure clean start
+
+    // When visible -> rAF for smoothness. When hidden -> 1s interval (throttled, but OK).
+    if (typeof document !== "undefined" && document.visibilityState === "visible") {
+      const tick = () => {
+        updateFromClock();
+        rafIdRef.current = requestAnimationFrame(tick);
+      };
+      rafIdRef.current = requestAnimationFrame(tick);
+    } else {
+      intervalIdRef.current = setInterval(updateFromClock, 1000);
+    }
+  };
+
+  const stopLoops = () => {
+    if (rafIdRef.current != null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    if (intervalIdRef.current != null) {
+      clearInterval(intervalIdRef.current);
+      intervalIdRef.current = null;
+    }
+  };
+
+  // ---------- Effect to manage loops & visibility ----------
   useEffect(() => {
-    if (!isConfigured || !isRunning) return;
+    if (!isConfigured || !isRunning) {
+      stopLoops();
+      return;
+    }
 
-    let frame: number;
-
-    const tick = () => {
-      if (startTimestamp.current !== null) {
-        const elapsed = Math.floor(
-          (Date.now() - startTimestamp.current - pauseOffset.current) / 1000
-        );
-        const left = initialTime - elapsed;
-
-        if (left <= 0) {
-          setIsRunning(false);
-          setTime(0);
-          handleTimerComplete();
-          return;
-        } else {
-          setTime(left);
-        }
-      }
-      frame = requestAnimationFrame(tick);
+    // kick things off
+    startLoops();
+    // Make sure we recalc instantly when the tab visibility changes
+    const onVis = () => {
+      // Force an immediate state update, then switch loop type
+      updateFromClock();
+      if (isRunning) startLoops();
     };
+    document.addEventListener("visibilitychange", onVis);
 
-    frame = requestAnimationFrame(tick);
-
-    return () => cancelAnimationFrame(frame);
-    // eslint-disable-next-line
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      stopLoops();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRunning, isConfigured, initialTime]);
 
   const formatTime = (seconds: number) => {
@@ -89,6 +129,7 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
+  // ---------- Controls ----------
   const handleConfigureTimer = () => {
     if (customDuration <= 0) return;
 
@@ -97,35 +138,40 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
     setInitialTime(timeInSeconds);
     setIsConfigured(true);
     setIsRunning(false);
-    startTimestamp.current = null;
-    pauseOffset.current = 0;
-    pauseStarted.current = null;
+    endAtMsRef.current = null;
+    pauseStartedMsRef.current = null;
   };
 
   const handleStart = () => {
     if (!isConfigured) return;
 
-    setIsRunning(true);
-
-    if (startTimestamp.current === null) {
-      startTimestamp.current = Date.now();
-      pauseOffset.current = 0;
-      pauseStarted.current = null;
-    } else if (pauseStarted.current !== null) {
-      pauseOffset.current += Date.now() - pauseStarted.current;
-      pauseStarted.current = null;
+    // If starting from idle, set the deadline based on remaining time.
+    if (endAtMsRef.current == null) {
+      endAtMsRef.current = nowMs() + time * 1000;
     }
+
+    // If resuming from pause, push the deadline forward by the pause duration.
+    if (pauseStartedMsRef.current != null) {
+      const pausedFor = nowMs() - pauseStartedMsRef.current;
+      endAtMsRef.current += pausedFor;
+      pauseStartedMsRef.current = null;
+    }
+
+    setIsRunning(true);
+    // Do an immediate update to reflect accurate value on the same frame
+    updateFromClock();
   };
 
   const handlePause = () => {
+    if (!isRunning) return;
+    pauseStartedMsRef.current = nowMs();
     setIsRunning(false);
-    if (pauseStarted.current === null) {
-      pauseStarted.current = Date.now();
-    }
+    updateFromClock();
   };
 
   const handleStop = () => {
     setIsRunning(false);
+    updateFromClock();
     if (initialTime > time && time > 0) {
       setShowSaveDialog(true);
     } else {
@@ -135,14 +181,14 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
 
   const handleReset = () => {
     setIsRunning(false);
+    stopLoops();
     setTime(0);
     setInitialTime(0);
     setIsConfigured(false);
     setSessionName("");
     setCustomDuration(25);
-    startTimestamp.current = null;
-    pauseOffset.current = 0;
-    pauseStarted.current = null;
+    endAtMsRef.current = null;
+    pauseStartedMsRef.current = null;
   };
 
   const handleTimerComplete = () => {
@@ -154,7 +200,7 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
     return {
       id: Date.now().toString(),
       name: sessionName || `${Math.floor(duration / 60)} min Study Session`,
-      duration: duration,
+      duration,
       date: new Date(),
     };
   };
@@ -186,7 +232,7 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
     return getTodaySessions().reduce((total, session) => total + session.duration, 0);
   };
 
-  // Compact mode
+  // ---------- UI ----------
   if (compact) {
     return (
       <Card className="card-hover">
@@ -269,7 +315,6 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
     );
   }
 
-  // Full mode
   return (
     <div className="space-y-6">
       <Card className="card-hover">
