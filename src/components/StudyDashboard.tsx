@@ -6,8 +6,20 @@ import { AssignmentTracker } from "./AssignmentTracker";
 import { StudyTimer } from "./StudyTimer";
 import { StudyStats } from "./StudyStats";
 
+interface StudySession {
+  id: string;
+  name: string;
+  duration: number;
+  date: Date;
+}
+
 export const StudyDashboard = () => {
   const [activeView, setActiveView] = useState<"dashboard" | "assignments" | "timer">("dashboard");
+
+  const handleSessionSaved = (session: StudySession) => {
+    // Trigger a custom event to update stats
+    window.dispatchEvent(new Event('sessionSaved'));
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -94,13 +106,13 @@ export const StudyDashboard = () => {
 
             {/* Today's Focus */}
             <div className="space-y-6">
-              <StudyTimer compact />
+              <StudyTimer compact onSessionSaved={handleSessionSaved} />
             </div>
           </div>
         )}
 
         {activeView === "assignments" && <AssignmentTracker />}
-        {activeView === "timer" && <StudyTimer />}
+        {activeView === "timer" && <StudyTimer onSessionSaved={handleSessionSaved} />}
       </main>
     </div>
   );
