@@ -27,7 +27,10 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
   const [isConfigured, setIsConfigured] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [sessions, setSessions] = useState<StudySession[]>([]);
-  
+
+  // New refs for accurate timing
+  const startTimestamp = useRef<number | null>(null); // in ms
+  const pauseOffset = useRef<number>(0); // ms spent paused
   const intervalRef = useRef<NodeJS.Timeout>();
 
   // Load sessions from localStorage on mount
@@ -47,25 +50,31 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
     localStorage.setItem('studyfocus-sessions', JSON.stringify(sessions));
   }, [sessions]);
 
+  // Timer effect: always computes time left using wall clock so it's accurate
   useEffect(() => {
-    if (isRunning && time > 0) {
-      intervalRef.current = setInterval(() => {
-        setTime(prev => {
-          if (prev <= 1) {
-            // Timer completed naturally
-            setIsRunning(false);
-            handleTimerComplete();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
+    if (!isConfigured || !isRunning) {
       clearInterval(intervalRef.current);
+      return;
     }
+    intervalRef.current = setInterval(() => {
+      if (startTimestamp.current !== null) {
+        const elapsed = Math.floor((Date.now() - startTimestamp.current - pauseOffset.current) / 1000);
+        const left = initialTime - elapsed;
+        if (left <= 0) {
+          setIsRunning(false);
+          setTime(0);
+          handleTimerComplete();
+          clearInterval(intervalRef.current);
+        } else {
+          setTime(left);
+        }
+      }
+    }, 1000);
 
     return () => clearInterval(intervalRef.current);
-  }, [isRunning, time]);
+    // Don't add time to deps; let the tick control updates
+    // eslint-disable-next-line
+  }, [isRunning, isConfigured, initialTime]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -75,28 +84,41 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
 
   const handleConfigureTimer = () => {
     if (customDuration <= 0) return;
-    
+
     const timeInSeconds = customDuration * 60;
     setTime(timeInSeconds);
     setInitialTime(timeInSeconds);
     setIsConfigured(true);
+    setIsRunning(false);
+    startTimestamp.current = null;
+    pauseOffset.current = 0;
   };
 
   const handleStart = () => {
+    if (!isConfigured) return;
     setIsRunning(true);
+
+    // If not started yet, record start, else resume from pause
+    if (startTimestamp.current === null) {
+      startTimestamp.current = Date.now();
+      pauseOffset.current = 0;
+    } else {
+      // Was paused, so subtract the paused duration
+      pauseOffset.current += Date.now() - (startTimestamp.current + (initialTime - time) * 1000 + pauseOffset.current);
+    }
   };
 
   const handlePause = () => {
     setIsRunning(false);
+    // pauseOffset will be handled on resume
   };
 
   const handleStop = () => {
     setIsRunning(false);
-    if (initialTime > time) {
-      // Some time has passed, ask to save
+    if (initialTime > time && time > 0) {
+      // Some time passed, ask to save
       setShowSaveDialog(true);
     } else {
-      // No time passed, just reset
       handleReset();
     }
   };
@@ -108,6 +130,8 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
     setIsConfigured(false);
     setSessionName("");
     setCustomDuration(25);
+    startTimestamp.current = null;
+    pauseOffset.current = 0;
   };
 
   const handleTimerComplete = () => {
@@ -151,6 +175,8 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
   const getTodayStudyTime = () => {
     return getTodaySessions().reduce((total, session) => total + session.duration, 0);
   };
+
+  // Rendering as before, using `time` state
 
   if (compact) {
     return (
