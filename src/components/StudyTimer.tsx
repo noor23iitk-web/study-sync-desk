@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 interface StudySession {
   id: string;
   name: string;
-  duration: number; // in seconds
+  duration: number; // seconds
   date: Date;
 }
 
@@ -20,105 +20,112 @@ interface StudyTimerProps {
   onSessionSaved?: (session: StudySession) => void;
 }
 
+const ACTIVE_KEY = "studyfocus-active";
+const SESSIONS_KEY = "studyfocus-sessions";
+
 export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps) => {
   const [isRunning, setIsRunning] = useState(false);
   const [time, setTime] = useState(0);
   const [initialTime, setInitialTime] = useState(0);
   const [sessionName, setSessionName] = useState("");
-  const [customDuration, setCustomDuration] = useState(25); // minutes
+  const [customDuration, setCustomDuration] = useState(25);
   const [isConfigured, setIsConfigured] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [sessions, setSessions] = useState<StudySession[]>([]);
 
-  // ---- Accurate timing refs (monotonic, not affected by tab throttling) ----
-  const endAtMsRef = useRef<number | null>(null);            // performance.now() timestamp when timer should hit 0
-  const pauseStartedMsRef = useRef<number | null>(null);     // performance.now() when paused
+  // Core timing refs
+  const endAtRef = useRef<number | null>(null);          // absolute epoch ms when timer hits 0
+  const pauseStartRef = useRef<number | null>(null);     // epoch ms when pause started
+  const completedOnceRef = useRef<boolean>(false);       // avoid double-complete
 
-  // Animation/update handles
-  const rafIdRef = useRef<number | null>(null);
-  const intervalIdRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // ---------- Storage ----------
+  // Load sessions & active timer from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem("studyfocus-sessions");
+    const saved = localStorage.getItem(SESSIONS_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      setSessions(
-        parsed.map((s: any) => ({
-          ...s,
-          date: new Date(s.date),
-        }))
-      );
+      setSessions(parsed.map((s: any) => ({ ...s, date: new Date(s.date) })));
+    }
+
+    const activeRaw = localStorage.getItem(ACTIVE_KEY);
+    if (activeRaw) {
+      try {
+        const a = JSON.parse(activeRaw);
+        if (a.initialTime && a.endAt) {
+          setIsConfigured(true);
+          setInitialTime(a.initialTime);
+          setSessionName(a.sessionName ?? "");
+          endAtRef.current = a.endAt as number;
+          pauseStartRef.current = a.paused ? (a.pauseStart ?? null) : null;
+
+          // set running state & current time left
+          const now = Date.now();
+          if (!a.paused && now < a.endAt) {
+            setIsRunning(true);
+            setTime(Math.max(0, Math.ceil((a.endAt - now) / 1000)));
+          } else {
+            // paused or completed
+            const left = Math.max(0, Math.ceil(((a.paused ? a.endAt + (now - (a.pauseStart ?? now)) : a.endAt) - now) / 1000)));
+            setTime(left);
+            setIsRunning(false);
+          }
+        }
+      } catch {
+        // ignore bad JSON
+      }
     }
   }, []);
 
+  // Persist sessions
   useEffect(() => {
-    localStorage.setItem("studyfocus-sessions", JSON.stringify(sessions));
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
   }, [sessions]);
 
-  // ---------- Helpers ----------
-  const nowMs = () => performance.now();
+  const persistActive = (data: Partial<{ initialTime: number; endAt: number | null; paused: boolean; pauseStart: number | null; sessionName: string }>) => {
+    const existing = localStorage.getItem(ACTIVE_KEY);
+    const base = existing ? JSON.parse(existing) : {};
+    const merged = { ...base, ...data };
+    if (merged.endAt == null) {
+      localStorage.removeItem(ACTIVE_KEY);
+    } else {
+      localStorage.setItem(ACTIVE_KEY, JSON.stringify(merged));
+    }
+  };
 
   const updateFromClock = () => {
-    if (endAtMsRef.current == null) return;
-
-    const leftSec = Math.ceil((endAtMsRef.current - nowMs()) / 1000);
+    if (!endAtRef.current) return;
+    const leftSec = Math.ceil((endAtRef.current - Date.now()) / 1000);
     if (leftSec <= 0) {
       setTime(0);
-      setIsRunning(false);
-      stopLoops();
-      handleTimerComplete();
+      if (isRunning) {
+        // transition to completed exactly once
+        setIsRunning(false);
+        if (!completedOnceRef.current) {
+          completedOnceRef.current = true;
+          // clear active state before calling complete
+          persistActive({ endAt: null });
+          handleTimerComplete();
+        }
+      }
     } else {
       setTime(leftSec);
     }
   };
 
-  const startLoops = () => {
-    stopLoops(); // ensure clean start
-
-    // When visible -> rAF for smoothness. When hidden -> 1s interval (throttled, but OK).
-    if (typeof document !== "undefined" && document.visibilityState === "visible") {
-      const tick = () => {
-        updateFromClock();
-        rafIdRef.current = requestAnimationFrame(tick);
-      };
-      rafIdRef.current = requestAnimationFrame(tick);
-    } else {
-      intervalIdRef.current = setInterval(updateFromClock, 1000);
-    }
-  };
-
-  const stopLoops = () => {
-    if (rafIdRef.current != null) {
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-    }
-    if (intervalIdRef.current != null) {
-      clearInterval(intervalIdRef.current);
-      intervalIdRef.current = null;
-    }
-  };
-
-  // ---------- Effect to manage loops & visibility ----------
+  // Main ticking effect: relies on wall clock, not interval accuracy
   useEffect(() => {
-    if (!isConfigured || !isRunning) {
-      stopLoops();
-      return;
-    }
+    if (!isConfigured || !isRunning) return;
 
-    // kick things off
-    startLoops();
-    // Make sure we recalc instantly when the tab visibility changes
-    const onVis = () => {
-      // Force an immediate state update, then switch loop type
-      updateFromClock();
-      if (isRunning) startLoops();
-    };
+    completedOnceRef.current = false;
+
+    updateFromClock(); // immediate
+    const id = setInterval(updateFromClock, 250); // display update; can be throttled, but we use wall clock
+
+    const onVis = () => updateFromClock(); // snap on tab switch
     document.addEventListener("visibilitychange", onVis);
 
     return () => {
+      clearInterval(id);
       document.removeEventListener("visibilitychange", onVis);
-      stopLoops();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRunning, isConfigured, initialTime]);
@@ -129,43 +136,57 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // ---------- Controls ----------
+  // Controls
   const handleConfigureTimer = () => {
     if (customDuration <= 0) return;
-
-    const timeInSeconds = customDuration * 60;
-    setTime(timeInSeconds);
-    setInitialTime(timeInSeconds);
+    const secs = customDuration * 60;
+    setTime(secs);
+    setInitialTime(secs);
     setIsConfigured(true);
     setIsRunning(false);
-    endAtMsRef.current = null;
-    pauseStartedMsRef.current = null;
+    endAtRef.current = null;
+    pauseStartRef.current = null;
+    persistActive({ initialTime: secs, endAt: null, paused: false, pauseStart: null, sessionName });
   };
 
   const handleStart = () => {
     if (!isConfigured) return;
 
-    // If starting from idle, set the deadline based on remaining time.
-    if (endAtMsRef.current == null) {
-      endAtMsRef.current = nowMs() + time * 1000;
+    const now = Date.now();
+
+    // If starting fresh, schedule deadline from remaining time
+    if (!endAtRef.current) {
+      endAtRef.current = now + time * 1000;
     }
 
-    // If resuming from pause, push the deadline forward by the pause duration.
-    if (pauseStartedMsRef.current != null) {
-      const pausedFor = nowMs() - pauseStartedMsRef.current;
-      endAtMsRef.current += pausedFor;
-      pauseStartedMsRef.current = null;
+    // If resuming from pause, push deadline forward by paused duration
+    if (pauseStartRef.current) {
+      endAtRef.current += now - pauseStartRef.current;
+      pauseStartRef.current = null;
     }
 
     setIsRunning(true);
-    // Do an immediate update to reflect accurate value on the same frame
+    persistActive({
+      initialTime,
+      endAt: endAtRef.current,
+      paused: false,
+      pauseStart: null,
+      sessionName,
+    });
     updateFromClock();
   };
 
   const handlePause = () => {
     if (!isRunning) return;
-    pauseStartedMsRef.current = nowMs();
+    pauseStartRef.current = Date.now();
     setIsRunning(false);
+    persistActive({
+      initialTime,
+      endAt: endAtRef.current!,
+      paused: true,
+      pauseStart: pauseStartRef.current,
+      sessionName,
+    });
     updateFromClock();
   };
 
@@ -181,14 +202,15 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
 
   const handleReset = () => {
     setIsRunning(false);
-    stopLoops();
     setTime(0);
     setInitialTime(0);
     setIsConfigured(false);
     setSessionName("");
     setCustomDuration(25);
-    endAtMsRef.current = null;
-    pauseStartedMsRef.current = null;
+    endAtRef.current = null;
+    pauseStartRef.current = null;
+    completedOnceRef.current = false;
+    localStorage.removeItem(ACTIVE_KEY);
   };
 
   const handleTimerComplete = () => {
@@ -196,14 +218,12 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
     saveSession(completedSession);
   };
 
-  const createSession = (duration: number): StudySession => {
-    return {
-      id: Date.now().toString(),
-      name: sessionName || `${Math.floor(duration / 60)} min Study Session`,
-      duration,
-      date: new Date(),
-    };
-  };
+  const createSession = (duration: number): StudySession => ({
+    id: Date.now().toString(),
+    name: sessionName || `${Math.floor(duration / 60)} min Study Session`,
+    duration,
+    date: new Date(),
+  });
 
   const saveSession = (session: StudySession) => {
     setSessions((prev) => [...prev, session]);
@@ -212,7 +232,7 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
   };
 
   const handleSaveSession = () => {
-    const studiedTime = initialTime - time;
+    const studiedTime = Math.max(0, initialTime - time);
     const session = createSession(studiedTime);
     saveSession(session);
     setShowSaveDialog(false);
@@ -225,14 +245,11 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
 
   const getTodaySessions = () => {
     const today = new Date().toDateString();
-    return sessions.filter((session) => session.date.toDateString() === today);
+    return sessions.filter((s) => s.date.toDateString() === today);
   };
+  const getTodayStudyTime = () => getTodaySessions().reduce((t, s) => t + s.duration, 0);
 
-  const getTodayStudyTime = () => {
-    return getTodaySessions().reduce((total, session) => total + session.duration, 0);
-  };
-
-  // ---------- UI ----------
+  // UI (unchanged from yours)
   if (compact) {
     return (
       <Card className="card-hover">
@@ -243,9 +260,7 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
           {!isConfigured ? (
             <div className="space-y-3">
               <div>
-                <Label htmlFor="compact-duration" className="text-sm">
-                  Duration (minutes)
-                </Label>
+                <Label htmlFor="compact-duration" className="text-sm">Duration (minutes)</Label>
                 <Input
                   id="compact-duration"
                   type="number"
@@ -256,12 +271,7 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
                   className="mt-1"
                 />
               </div>
-              <Button
-                onClick={handleConfigureTimer}
-                className="w-full"
-                size="sm"
-                disabled={customDuration <= 0}
-              >
+              <Button onClick={handleConfigureTimer} className="w-full" size="sm" disabled={customDuration <= 0}>
                 <Clock className="h-4 w-4 mr-2" />
                 Set Timer
               </Button>
@@ -269,22 +279,13 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
           ) : (
             <>
               <div className="text-center">
-                <div
-                  className={`text-3xl font-mono countdown-text ${
-                    isRunning ? "text-primary timer-glow" : "text-foreground"
-                  }`}
-                >
+                <div className={`text-3xl font-mono countdown-text ${isRunning ? 'text-primary timer-glow' : 'text-foreground'}`}>
                   {formatTime(time)}
                 </div>
                 <p className="text-sm text-foreground-secondary mt-1">
-                  {time === 0
-                    ? "Session Complete!"
-                    : isRunning
-                    ? "Session in progress"
-                    : "Ready to start"}
+                  {time === 0 ? 'Session Complete!' : isRunning ? 'Session in progress' : 'Ready to start'}
                 </p>
               </div>
-
               <div className="flex justify-center space-x-2">
                 {!isRunning ? (
                   <Button size="sm" onClick={handleStart} className="w-16" disabled={time === 0}>
@@ -304,7 +305,6 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
               </div>
             </>
           )}
-
           <div className="text-center pt-2 border-t border-border">
             <p className="text-sm text-foreground-secondary">
               Today: {formatTime(getTodayStudyTime())} ({getTodaySessions().length} sessions)
@@ -348,14 +348,8 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
                   />
                 </div>
               </div>
-
               <div className="text-center">
-                <Button
-                  onClick={handleConfigureTimer}
-                  size="lg"
-                  className="px-8"
-                  disabled={customDuration <= 0}
-                >
+                <Button onClick={handleConfigureTimer} size="lg" className="px-8" disabled={customDuration <= 0}>
                   <Clock className="h-5 w-5 mr-2" />
                   Set Timer ({customDuration} min)
                 </Button>
@@ -364,21 +358,15 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
           ) : (
             <>
               <div className="text-center">
-                <div
-                  className={`text-6xl font-mono countdown-text mb-4 ${
-                    isRunning ? "text-primary timer-glow" : "text-foreground"
-                  }`}
-                >
+                <div className={`text-6xl font-mono countdown-text mb-4 ${isRunning ? 'text-primary timer-glow' : 'text-foreground'}`}>
                   {formatTime(time)}
                 </div>
-
                 <div className="mb-6">
                   <p className="text-lg text-foreground-secondary">
                     {sessionName || `${Math.floor(initialTime / 60)} Minute Study Session`}
                   </p>
                   {time === 0 && <p className="text-green-500 font-medium mt-2">Session Complete! 🎉</p>}
                 </div>
-
                 <div className="flex justify-center space-x-3">
                   {!isRunning ? (
                     <Button size="lg" onClick={handleStart} className="px-8" disabled={time === 0}>
@@ -391,12 +379,10 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
                       Pause
                     </Button>
                   )}
-
                   <Button size="lg" variant="outline" onClick={handleStop} className="px-6">
                     <Square className="h-5 w-5 mr-2" />
                     Stop
                   </Button>
-
                   <Button size="lg" variant="outline" onClick={handleReset} className="px-6">
                     <RotateCcw className="h-5 w-5 mr-2" />
                     Reset
@@ -437,12 +423,10 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-foreground-secondary">
-              You studied for {formatTime(initialTime - time)}. Would you like to save this session?
+              You studied for {formatTime(Math.max(0, initialTime - time))}. Save this session?
             </p>
             <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={handleDiscardSession}>
-                No, Discard
-              </Button>
+              <Button variant="outline" onClick={handleDiscardSession}>No, Discard</Button>
               <Button onClick={handleSaveSession}>Yes, Save Session</Button>
             </div>
           </div>
@@ -457,26 +441,19 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-60 overflow-y-auto custom-scrollbar">
-              {sessions
-                .slice(-10)
-                .reverse()
-                .map((session) => (
-                  <div
-                    key={session.id}
-                    className="flex justify-between items-center p-3 rounded-lg bg-background-secondary"
-                  >
-                    <div>
-                      <p className="font-medium text-foreground">{session.name}</p>
-                      <p className="text-sm text-foreground-secondary">
-                        {session.date.toLocaleDateString()} at{" "}
-                        {session.date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-mono text-primary">{formatTime(session.duration)}</p>
-                    </div>
+              {sessions.slice(-10).reverse().map((s) => (
+                <div key={s.id} className="flex justify-between items-center p-3 rounded-lg bg-background-secondary">
+                  <div>
+                    <p className="font-medium text-foreground">{s.name}</p>
+                    <p className="text-sm text-foreground-secondary">
+                      {s.date.toLocaleDateString()} at {s.date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </p>
                   </div>
-                ))}
+                  <div className="text-right">
+                    <p className="font-mono text-primary">{formatTime(s.duration)}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
