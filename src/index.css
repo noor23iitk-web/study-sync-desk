@@ -1,42 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* StudyFocus Design System - Dark Theme for Productivity */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* StudyFocus Dark Theme */
+    --background: 222 47% 7%;           /* Deep navy background */
+    --background-secondary: 222 47% 9%; /* Slightly lighter navy */
+    --background-tertiary: 222 47% 11%; /* Card backgrounds */
+    --foreground: 215 20% 85%;          /* Muted gray text */
+    --foreground-secondary: 215 15% 65%; /* Secondary text */
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 222 47% 9%;
+    --card-foreground: 215 20% 85%;
+    --card-hover: 222 47% 11%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 222 47% 9%;
+    --popover-foreground: 215 20% 85%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Blue accent system */
+    --primary: 213 94% 68%;              /* Bright blue for actions */
+    --primary-hover: 213 94% 75%;        /* Lighter blue for hover */
+    --primary-foreground: 222 47% 7%;    /* Dark text on blue */
+    --primary-glow: 213 94% 68%;         /* For glow effects */
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Coral warning system */
+    --warning: 0 79% 70%;                /* Coral for warnings */
+    --warning-hover: 0 79% 75%;          /* Lighter coral */
+    --warning-foreground: 222 47% 7%;    /* Dark text on coral */
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --secondary: 222 47% 11%;
+    --secondary-foreground: 215 20% 85%;
+    --secondary-hover: 222 47% 13%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --muted: 222 47% 11%;
+    --muted-foreground: 215 15% 65%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --accent: 213 94% 68%;
+    --accent-foreground: 222 47% 7%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --destructive: 0 79% 70%;
+    --destructive-foreground: 222 47% 7%;
 
-    --radius: 0.5rem;
+    --border: 222 47% 15%;               /* Subtle borders */
+    --input: 222 47% 11%;
+    --ring: 213 94% 68%;
+
+    --radius: 0.75rem;
+
+    /* Custom gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(213 94% 68%), hsl(213 94% 75%));
+    --gradient-background: linear-gradient(180deg, hsl(222 47% 7%), hsl(222 47% 9%));
+    --gradient-card: linear-gradient(135deg, hsl(222 47% 9%), hsl(222 47% 11%));
+    
+    /* Shadows with blue glow */
+    --shadow-primary: 0 4px 20px hsl(213 94% 68% / 0.3);
+    --shadow-card: 0 4px 12px hsl(222 47% 4% / 0.4);
+    --shadow-glow: 0 0 30px hsl(213 94% 68% / 0.5);
+
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-fast: all 0.15s ease-out;
 
     --sidebar-background: 0 0% 98%;
 
@@ -100,6 +128,70 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-inter;
+    background: var(--gradient-background);
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  /* Timer glow effect */
+  .timer-glow {
+    box-shadow: var(--shadow-glow);
+  }
+  
+  /* Card hover animations */
+  .card-hover {
+    transition: var(--transition-smooth);
+  }
+  
+  .card-hover:hover {
+    background: hsl(var(--card-hover));
+    box-shadow: var(--shadow-card);
+    transform: translateY(-2px);
+  }
+  
+  /* Countdown text styling */
+  .countdown-text {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+  
+  /* Study session indicators */
+  .session-active {
+    background: var(--gradient-primary);
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+  
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 5px hsl(var(--primary-glow) / 0.5);
+    }
+    50% {
+      box-shadow: 0 0 20px hsl(var(--primary-glow) / 0.8);
+    }
+  }
+  
+  /* Custom scrollbar */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
   }
 }
