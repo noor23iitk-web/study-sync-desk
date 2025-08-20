@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AssignmentTracker } from "./AssignmentTracker";
 import { StudyTimer } from "./StudyTimer";
 import { StudyStats } from "./StudyStats";
+import { PendingAssignments } from "./PendingAssignments";
+import { QuickNotes } from "./QuickNotes";
 
 interface StudySession {
   id: string;
@@ -14,7 +16,7 @@ interface StudySession {
 }
 
 export const StudyDashboard = () => {
-  const [activeView, setActiveView] = useState<"dashboard" | "assignments" | "timer">("dashboard");
+  const [activeView, setActiveView] = useState<"dashboard" | "assignments" | "timer" | "notes">("dashboard");
 
   const handleSessionSaved = (session: StudySession) => {
     // Trigger a custom event to update stats
@@ -62,6 +64,15 @@ export const StudyDashboard = () => {
                 <Clock className="h-4 w-4 mr-2" />
                 Study Timer
               </Button>
+              <Button
+                variant={activeView === "notes" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setActiveView("notes")}
+                className="text-sm"
+              >
+                <BookOpen className="h-4 w-4 mr-2" />
+                Notes
+              </Button>
             </nav>
           </div>
         </div>
@@ -71,9 +82,12 @@ export const StudyDashboard = () => {
       <main className="container mx-auto px-6 py-8">
         {activeView === "dashboard" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Quick Stats */}
+            {/* Main Content */}
             <div className="lg:col-span-2 space-y-6">
               <StudyStats />
+              
+              {/* Pending Assignments */}
+              <PendingAssignments />
               
               {/* Quick Actions */}
               <Card className="card-hover">
@@ -104,15 +118,17 @@ export const StudyDashboard = () => {
               </Card>
             </div>
 
-            {/* Today's Focus */}
+            {/* Right Sidebar */}
             <div className="space-y-6">
               <StudyTimer compact onSessionSaved={handleSessionSaved} />
+              <QuickNotes />
             </div>
           </div>
         )}
 
         {activeView === "assignments" && <AssignmentTracker />}
         {activeView === "timer" && <StudyTimer onSessionSaved={handleSessionSaved} />}
+        {activeView === "notes" && <QuickNotes />}
       </main>
     </div>
   );

@@ -43,6 +43,11 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
         date: new Date(s.date)
       })));
     }
+
+    // Request notification permission on component mount
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
   }, []);
 
   // Save sessions to localStorage when updated
@@ -134,7 +139,47 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
     pauseOffset.current = 0;
   };
 
+  const playCompletionSound = () => {
+    // Create a simple beep sound using Web Audio API
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+      oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.2);
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (error) {
+      console.log('Audio not supported:', error);
+    }
+  };
+
+  const showCompletionNotification = () => {
+    // Show browser notification if permission granted
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('StudyFocus - Session Complete!', {
+        body: `Your ${Math.floor(initialTime / 60)}-minute study session is complete!`,
+        icon: '/favicon.ico'
+      });
+    }
+  };
+
   const handleTimerComplete = () => {
+    // Play completion sound
+    playCompletionSound();
+    
+    // Show system notification
+    showCompletionNotification();
+    
     // Timer completed naturally - auto-save
     const completedSession = createSession(initialTime);
     saveSession(completedSession);
@@ -212,11 +257,16 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
           ) : (
             <>
               <div className="text-center">
-                <div className={`text-3xl font-mono countdown-text ${isRunning ? 'text-primary timer-glow' : 'text-foreground'}`}>
+                <div className={`text-3xl font-mono countdown-text ${
+                  time === 0 ? 'text-green-500 animate-pulse' : 
+                  isRunning ? 'text-primary timer-glow' : 'text-foreground'
+                }`}>
                   {formatTime(time)}
                 </div>
-                <p className="text-sm text-foreground-secondary mt-1">
-                  {time === 0 ? 'Session Complete!' : isRunning ? 'Session in progress' : 'Ready to start'}
+                <p className={`text-sm mt-1 ${
+                  time === 0 ? 'text-green-500 font-semibold animate-pulse' : 'text-foreground-secondary'
+                }`}>
+                  {time === 0 ? '🎉 Session Complete!' : isRunning ? 'Session in progress' : 'Ready to start'}
                 </p>
               </div>
               
@@ -299,7 +349,10 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
           ) : (
             <>
               <div className="text-center">
-                <div className={`text-6xl font-mono countdown-text mb-4 ${isRunning ? 'text-primary timer-glow' : 'text-foreground'}`}>
+                <div className={`text-6xl font-mono countdown-text mb-4 ${
+                  time === 0 ? 'text-green-500 animate-pulse' : 
+                  isRunning ? 'text-primary timer-glow' : 'text-foreground'
+                }`}>
                   {formatTime(time)}
                 </div>
                 
@@ -308,7 +361,9 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
                     {sessionName || `${Math.floor(initialTime / 60)} Minute Study Session`}
                   </p>
                   {time === 0 && (
-                    <p className="text-green-500 font-medium mt-2">Session Complete! 🎉</p>
+                    <p className="text-green-500 font-medium mt-2 animate-pulse text-lg">
+                      🎉 TIME'S UP! Session Complete! 🎉
+                    </p>
                   )}
                 </div>
                 

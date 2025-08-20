@@ -42,6 +42,8 @@ export const AssignmentTracker = () => {
   // Save assignments to localStorage when updated
   useEffect(() => {
     localStorage.setItem('studyfocus-assignments', JSON.stringify(assignments));
+    // Dispatch custom event to notify other components
+    window.dispatchEvent(new Event('assignmentUpdated'));
   }, [assignments]);
 
   const handleAddAssignment = () => {
