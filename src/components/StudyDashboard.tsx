@@ -7,7 +7,6 @@ import { StudyTimer } from "./StudyTimer";
 import { StudyStats } from "./StudyStats";
 import { PendingAssignments } from "./PendingAssignments";
 import { QuickNotes } from "./QuickNotes";
-import { CalendarView } from "./CalendarView";
 
 interface StudySession {
   id: string;
@@ -17,7 +16,7 @@ interface StudySession {
 }
 
 export const StudyDashboard = () => {
-  const [activeView, setActiveView] = useState<"dashboard" | "assignments" | "timer" | "notes" | "calendar">("dashboard");
+  const [activeView, setActiveView] = useState<"dashboard" | "assignments" | "timer" | "notes">("dashboard");
 
   const handleSessionSaved = (session: StudySession) => {
     // Trigger a custom event to update stats
@@ -73,15 +72,6 @@ export const StudyDashboard = () => {
               >
                 <BookOpen className="h-4 w-4 mr-2" />
                 Notes
-              </Button>
-              <Button
-                variant={activeView === "calendar" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setActiveView("calendar")}
-                className="text-sm"
-              >
-                <Calendar className="h-4 w-4 mr-2" />
-                Calendar
               </Button>
             </nav>
           </div>
@@ -139,7 +129,6 @@ export const StudyDashboard = () => {
         {activeView === "assignments" && <AssignmentTracker />}
         {activeView === "timer" && <StudyTimer onSessionSaved={handleSessionSaved} />}
         {activeView === "notes" && <QuickNotes />}
-        {activeView === "calendar" && <CalendarView />}
       </main>
     </div>
   );

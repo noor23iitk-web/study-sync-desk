@@ -26,15 +26,12 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
   const [customDuration, setCustomDuration] = useState(25); // in minutes
   const [isConfigured, setIsConfigured] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [showAlarmDialog, setShowAlarmDialog] = useState(false);
   const [sessions, setSessions] = useState<StudySession[]>([]);
 
   // New refs for accurate timing
   const startTimestamp = useRef<number | null>(null); // in ms
   const pauseOffset = useRef<number>(0); // ms spent paused
   const intervalRef = useRef<NodeJS.Timeout>();
-  const alarmAudioRef = useRef<AudioContext | null>(null);
-  const alarmOscillatorRef = useRef<OscillatorNode | null>(null);
 
   // Load sessions from localStorage on mount
   useEffect(() => {
@@ -142,11 +139,9 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
     pauseOffset.current = 0;
   };
 
-  const playPersistentAlarm = () => {
+  const playCompletionSound = () => {
+    // Create a simple beep sound using Web Audio API
     try {
-      // Stop any existing alarm first
-      stopAlarm();
-      
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
@@ -154,51 +149,17 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
       
-      // Create an alarm pattern that repeats
       oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-      oscillator.type = 'square';
+      oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.2);
       
-      gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
       
-      // Start the alarm
       oscillator.start(audioContext.currentTime);
-      
-      alarmAudioRef.current = audioContext;
-      alarmOscillatorRef.current = oscillator;
-      
-      // Set up repeating alarm pattern
-      const repeatAlarm = () => {
-        if (alarmOscillatorRef.current && alarmAudioRef.current) {
-          setTimeout(() => {
-            if (showAlarmDialog) {
-              repeatAlarm();
-            }
-          }, 2000); // Repeat every 2 seconds
-        }
-      };
-      
-      repeatAlarm();
+      oscillator.stop(audioContext.currentTime + 0.5);
     } catch (error) {
       console.log('Audio not supported:', error);
-    }
-  };
-
-  const stopAlarm = () => {
-    if (alarmOscillatorRef.current) {
-      try {
-        alarmOscillatorRef.current.stop();
-      } catch (e) {
-        // Oscillator may already be stopped
-      }
-      alarmOscillatorRef.current = null;
-    }
-    if (alarmAudioRef.current) {
-      try {
-        alarmAudioRef.current.close();
-      } catch (e) {
-        // Context may already be closed
-      }
-      alarmAudioRef.current = null;
     }
   };
 
@@ -213,20 +174,11 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
   };
 
   const handleTimerComplete = () => {
-    // Show persistent alarm dialog
-    setShowAlarmDialog(true);
-    
-    // Play persistent alarm
-    playPersistentAlarm();
+    // Play completion sound
+    playCompletionSound();
     
     // Show system notification
     showCompletionNotification();
-  };
-
-  const handleDismissAlarm = () => {
-    // Stop the alarm
-    stopAlarm();
-    setShowAlarmDialog(false);
     
     // Timer completed naturally - auto-save
     const completedSession = createSession(initialTime);
@@ -483,35 +435,6 @@ export const StudyTimer = ({ compact = false, onSessionSaved }: StudyTimerProps)
                 Yes, Save Session
               </Button>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Persistent Alarm Dialog */}
-      <Dialog open={showAlarmDialog} onOpenChange={() => {}}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-center text-2xl text-green-500 animate-pulse">
-              🎉 Session Complete! 🎉
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-6 text-center">
-            <div className="text-6xl animate-bounce">⏰</div>
-            <div>
-              <p className="text-xl font-semibold text-foreground mb-2">
-                TIME'S UP!
-              </p>
-              <p className="text-lg text-foreground-secondary">
-                Your {Math.floor(initialTime / 60)}-minute study session is complete!
-              </p>
-            </div>
-            <Button 
-              size="lg" 
-              onClick={handleDismissAlarm}
-              className="w-full text-lg py-3 bg-green-500 hover:bg-green-600 text-white animate-pulse"
-            >
-              Stop Alarm & Save Session
-            </Button>
           </div>
         </DialogContent>
       </Dialog>
