@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Clock, BookOpen, Target, Calendar, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,20 +8,8 @@ import { StudyStats } from "./StudyStats";
 import { PendingAssignments } from "./PendingAssignments";
 import { QuickNotes } from "./QuickNotes";
 
-interface StudySession {
-  id: string;
-  name: string;
-  duration: number;
-  date: Date;
-}
-
 export const StudyDashboard = () => {
   const [activeView, setActiveView] = useState<"dashboard" | "assignments" | "timer" | "notes">("dashboard");
-
-  const handleSessionSaved = (session: StudySession) => {
-    // Trigger a custom event to update stats
-    window.dispatchEvent(new Event('sessionSaved'));
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -120,14 +108,14 @@ export const StudyDashboard = () => {
 
             {/* Right Sidebar */}
             <div className="space-y-6">
-              <StudyTimer compact onSessionSaved={handleSessionSaved} />
+              <StudyTimer compact />
               <QuickNotes />
             </div>
           </div>
         )}
 
         {activeView === "assignments" && <AssignmentTracker />}
-        {activeView === "timer" && <StudyTimer onSessionSaved={handleSessionSaved} />}
+        {activeView === "timer" && <StudyTimer />}
         {activeView === "notes" && <QuickNotes />}
       </main>
     </div>
