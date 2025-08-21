@@ -126,7 +126,14 @@ export const GlobalTimerProvider = ({ children }: { children: ReactNode }) => {
 
   const playPleasantChime = () => {
     try {
+      // Request user interaction first to enable audio
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      // Resume audio context if suspended
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+      
       audioContextRef.current = audioContext;
       
       // Create a pleasant bell-like sound that loops
@@ -137,36 +144,57 @@ export const GlobalTimerProvider = ({ children }: { children: ReactNode }) => {
         oscillator.connect(gainNode);
         gainNode.connect(audioContext.destination);
         
-        // Pleasant bell frequencies
+        // Pleasant bell frequencies creating a melodic chime
         oscillator.frequency.setValueAtTime(523, audioContext.currentTime); // C5
-        oscillator.frequency.setValueAtTime(659, audioContext.currentTime + 0.3); // E5
-        oscillator.frequency.setValueAtTime(784, audioContext.currentTime + 0.6); // G5
+        oscillator.frequency.setValueAtTime(659, audioContext.currentTime + 0.2); // E5
+        oscillator.frequency.setValueAtTime(784, audioContext.currentTime + 0.4); // G5
+        oscillator.frequency.setValueAtTime(1047, audioContext.currentTime + 0.6); // C6
         
         oscillator.type = 'sine';
         gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-        gainNode.gain.linearRampToValueAtTime(0.2, audioContext.currentTime + 0.1);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1);
+        gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1.2);
         
         oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 1);
+        oscillator.stop(audioContext.currentTime + 1.2);
         
         return oscillator;
       };
 
-      // Play initial chime
+      // Play initial chime immediately
       oscillatorRef.current = createChime();
       
-      // Loop every 3 seconds until dismissed
+      // Continue chiming every 2 seconds until dismissed
       const chimeInterval = setInterval(() => {
-        if (state.showCompletionDialog) {
-          createChime();
-        } else {
+        try {
+          if (state.showCompletionDialog && audioContext.state !== 'closed') {
+            createChime();
+          } else {
+            clearInterval(chimeInterval);
+          }
+        } catch (error) {
+          console.log('Chime loop error:', error);
           clearInterval(chimeInterval);
         }
-      }, 3000);
+      }, 2000);
 
     } catch (error) {
       console.log('Audio not supported:', error);
+      // Fallback: try to play system beep
+      try {
+        // Create a simple fallback beep
+        const oscillator = new OscillatorNode(new AudioContext());
+        const gainNode = new GainNode(new AudioContext());
+        oscillator.connect(gainNode);
+        gainNode.connect(new AudioContext().destination);
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        gainNode.gain.value = 0.1;
+        oscillator.start();
+        oscillator.stop(new AudioContext().currentTime + 0.5);
+      } catch (fallbackError) {
+        console.log('No audio support available');
+      }
     }
   };
 

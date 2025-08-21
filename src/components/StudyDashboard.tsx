@@ -7,9 +7,10 @@ import { StudyTimer } from "./StudyTimer";
 import { StudyStats } from "./StudyStats";
 import { PendingAssignments } from "./PendingAssignments";
 import { QuickNotes } from "./QuickNotes";
+import { CalendarView } from "./CalendarView";
 
 export const StudyDashboard = () => {
-  const [activeView, setActiveView] = useState<"dashboard" | "assignments" | "timer" | "notes">("dashboard");
+  const [activeView, setActiveView] = useState<"dashboard" | "assignments" | "timer" | "notes" | "calendar">("dashboard");
 
   return (
     <div className="min-h-screen bg-background">
@@ -35,12 +36,21 @@ export const StudyDashboard = () => {
                 Dashboard
               </Button>
               <Button
+                variant={activeView === "calendar" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setActiveView("calendar")}
+                className="text-sm"
+              >
+                <Calendar className="h-4 w-4 mr-2" />
+                Calendar
+              </Button>
+              <Button
                 variant={activeView === "assignments" ? "default" : "ghost"}
                 size="sm"
                 onClick={() => setActiveView("assignments")}
                 className="text-sm"
               >
-                <Calendar className="h-4 w-4 mr-2" />
+                <Plus className="h-4 w-4 mr-2" />
                 Assignments
               </Button>
               <Button
@@ -91,7 +101,7 @@ export const StudyDashboard = () => {
                     className="h-12" 
                     onClick={() => setActiveView("assignments")}
                   >
-                    <Calendar className="h-4 w-4 mr-2" />
+                    <Plus className="h-4 w-4 mr-2" />
                     Add Assignment
                   </Button>
                   <Button 
@@ -114,6 +124,7 @@ export const StudyDashboard = () => {
           </div>
         )}
 
+        {activeView === "calendar" && <CalendarView />}
         {activeView === "assignments" && <AssignmentTracker />}
         {activeView === "timer" && <StudyTimer />}
         {activeView === "notes" && <QuickNotes />}
