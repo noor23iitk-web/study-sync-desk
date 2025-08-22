@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
+import soundTrack from "@/Magical-Moments-chosic.com_.mp3";
 
 interface StudySession {
   id: string;
@@ -54,7 +55,7 @@ export const GlobalTimerProvider = ({ children }: { children: ReactNode }) => {
   });
 
   const intervalRef = useRef<NodeJS.Timeout>();
-  const audioRef = useRef<HTMLAudioElement>();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Load persistent timer state from localStorage
   useEffect(() => {
@@ -125,7 +126,7 @@ export const GlobalTimerProvider = ({ children }: { children: ReactNode }) => {
 
   const playPleasantChime = () => {
     try {
-      const audio = new Audio('/src/Magical-Moments-chosic.com_.mp3');
+      const audio = new Audio(soundTrack);
       audio.loop = true;
       audio.volume = 0.7;
       
