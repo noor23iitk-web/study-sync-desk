@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Clock, BookOpen, Target, Calendar, Plus } from "lucide-react";
+import { Clock, BookOpen, Target, Calendar, Plus, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AssignmentTracker } from "./AssignmentTracker";
@@ -8,9 +8,10 @@ import { StudyStats } from "./StudyStats";
 import { PendingAssignments } from "./PendingAssignments";
 import { QuickNotes } from "./QuickNotes";
 import { CalendarView } from "./CalendarView";
+import { AnalyticsDashboard } from "./analytics/AnalyticsDashboard";
 
 export const StudyDashboard = () => {
-  const [activeView, setActiveView] = useState<"dashboard" | "assignments" | "timer" | "notes" | "calendar">("dashboard");
+  const [activeView, setActiveView] = useState<"dashboard" | "assignments" | "timer" | "notes" | "calendar" | "analytics">("dashboard");
 
   return (
     <div className="min-h-screen bg-background">
@@ -71,6 +72,15 @@ export const StudyDashboard = () => {
                 <BookOpen className="h-4 w-4 mr-2" />
                 Notes
               </Button>
+              <Button
+                variant={activeView === "analytics" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setActiveView("analytics")}
+                className="text-sm"
+              >
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Analytics
+              </Button>
             </nav>
           </div>
         </div>
@@ -128,6 +138,7 @@ export const StudyDashboard = () => {
         {activeView === "assignments" && <AssignmentTracker />}
         {activeView === "timer" && <StudyTimer />}
         {activeView === "notes" && <QuickNotes />}
+        {activeView === "analytics" && <AnalyticsDashboard />}
       </main>
     </div>
   );
