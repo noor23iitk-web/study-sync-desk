@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Clock, BookOpen, Target, Calendar, Plus, BarChart3 } from "lucide-react";
+import { Clock, BookOpen, Target, Calendar, Plus, BarChart3, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AssignmentTracker } from "./AssignmentTracker";
@@ -10,9 +10,15 @@ import { QuickNotes } from "./QuickNotes";
 import { CalendarView } from "./CalendarView";
 import { AnalyticsDashboard } from "./analytics/AnalyticsDashboard";
 import { StreakWidget } from "./dashboard/StreakWidget";
+import { AchievementsPage } from "./achievements/AchievementsPage";
+import { AchievementUnlocked } from "./achievements/AchievementUnlocked";
+import { useAchievementChecker } from "@/hooks/useAchievementChecker";
 
 export const StudyDashboard = () => {
-  const [activeView, setActiveView] = useState<"dashboard" | "assignments" | "timer" | "notes" | "calendar" | "analytics">("dashboard");
+  const [activeView, setActiveView] = useState<"dashboard" | "assignments" | "timer" | "notes" | "calendar" | "analytics" | "achievements">("dashboard");
+  
+  // Initialize achievement checker
+  useAchievementChecker();
 
   return (
     <div className="min-h-screen bg-background">
@@ -82,6 +88,15 @@ export const StudyDashboard = () => {
                 <BarChart3 className="h-4 w-4 mr-2" />
                 Analytics
               </Button>
+              <Button
+                variant={activeView === "achievements" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setActiveView("achievements")}
+                className="text-sm"
+              >
+                <Trophy className="h-4 w-4 mr-2" />
+                Achievements
+              </Button>
             </nav>
           </div>
         </div>
@@ -141,7 +156,11 @@ export const StudyDashboard = () => {
         {activeView === "timer" && <StudyTimer />}
         {activeView === "notes" && <QuickNotes />}
         {activeView === "analytics" && <AnalyticsDashboard />}
+        {activeView === "achievements" && <AchievementsPage />}
       </main>
+      
+      {/* Achievement Notifications */}
+      <AchievementUnlocked />
     </div>
   );
 };
