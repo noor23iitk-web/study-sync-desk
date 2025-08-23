@@ -9,6 +9,7 @@ import { PendingAssignments } from "./PendingAssignments";
 import { QuickNotes } from "./QuickNotes";
 import { CalendarView } from "./CalendarView";
 import { AnalyticsDashboard } from "./analytics/AnalyticsDashboard";
+import { StreakWidget } from "./dashboard/StreakWidget";
 
 export const StudyDashboard = () => {
   const [activeView, setActiveView] = useState<"dashboard" | "assignments" | "timer" | "notes" | "calendar" | "analytics">("dashboard");
@@ -128,6 +129,7 @@ export const StudyDashboard = () => {
 
             {/* Right Sidebar */}
             <div className="space-y-6">
+              <StreakWidget />
               <StudyTimer compact />
               <QuickNotes />
             </div>
