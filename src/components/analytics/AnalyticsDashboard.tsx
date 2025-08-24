@@ -198,8 +198,17 @@ export const AnalyticsDashboard = () => {
   const subjectData = getSubjectDistributionData();
   const timeOfDayData = getTimeOfDayData();
 
-  // Colors for charts
-  const colors = ['hsl(213, 94%, 68%)', 'hsl(0, 79%, 70%)', 'hsl(142, 71%, 45%)', 'hsl(38, 92%, 50%)', 'hsl(271, 81%, 56%)', 'hsl(342, 75%, 51%)'];
+  // Colors for charts - vibrant palette optimized for dark theme
+  const colors = [
+    'hsl(213, 94%, 68%)',  // Bright blue
+    'hsl(142, 76%, 60%)',  // Bright green  
+    'hsl(38, 95%, 65%)',   // Bright orange
+    'hsl(342, 89%, 68%)',  // Bright pink
+    'hsl(271, 81%, 70%)',  // Bright purple
+    'hsl(189, 85%, 65%)',  // Bright cyan
+    'hsl(48, 89%, 70%)',   // Bright yellow
+    'hsl(14, 89%, 68%)',   // Bright red-orange
+  ];
 
   const formatTime = (hours: number) => {
     if (hours >= 1) {
