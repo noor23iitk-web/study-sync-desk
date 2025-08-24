@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from "react";
 import { ACHIEVEMENTS, Achievement } from "@/data/achievements";
-import { getHours, differenceInHours, startOfDay, differenceInDays, parseISO } from "date-fns";
+import { getHours, differenceInHours, startOfDay, differenceInDays, parseISO, format, startOfWeek, endOfWeek, getDay } from "date-fns";
 
 interface StudySession {
   id: string;
@@ -60,6 +60,13 @@ export const useAchievementChecker = () => {
           }
           break;
 
+        case "dawn_warrior":
+          if (newSession) {
+            const sessionHour = getHours(parseISO(newSession.date));
+            shouldUnlock = sessionHour < 6;
+          }
+          break;
+
         case "night_owl":
           if (newSession) {
             const sessionHour = getHours(parseISO(newSession.date));
@@ -67,7 +74,16 @@ export const useAchievementChecker = () => {
           }
           break;
 
+        case "midnight_scholar":
+          if (newSession) {
+            const sessionHour = getHours(parseISO(newSession.date));
+            shouldUnlock = sessionHour >= 0 && sessionHour < 3; // Midnight to 3 AM
+          }
+          break;
+
         case "marathoner":
+        case "focus_master":
+        case "time_lord":
           if (newSession && achievement.criteria.value) {
             shouldUnlock = newSession.duration >= achievement.criteria.value;
           }
@@ -76,17 +92,25 @@ export const useAchievementChecker = () => {
         case "speed_demon":
           if (newSession && achievement.criteria.value) {
             const targetDuration = achievement.criteria.value;
-            // Check if session is within 5 minutes of target (25 minutes ± 5 minutes)
+            // Check if session is within 5 minutes of target
             shouldUnlock = Math.abs(newSession.duration - targetDuration) <= 300;
           }
           break;
 
         case "consistent":
+        case "iron_will":
+        case "habit_builder":
+        case "month_streak":
+        case "unstoppable":
           shouldUnlock = calculateCurrentStreak(sessions) >= (achievement.criteria.value || 7);
           break;
 
         case "perfect_week":
           shouldUnlock = checkPerfectWeek(sessions);
+          break;
+
+        case "weekend_warrior":
+          shouldUnlock = checkWeekendWarrior(sessions);
           break;
 
         case "overachiever":
@@ -98,13 +122,51 @@ export const useAchievementChecker = () => {
           }
           break;
 
+        case "perfectionist":
+          const onTimeAssignments = assignments.filter(a => 
+            a.completed && a.completedAt && parseISO(a.completedAt) <= parseISO(a.dueDate)
+          );
+          shouldUnlock = onTimeAssignments.length >= (achievement.criteria.value || 10);
+          break;
+
+        case "assignment_streak":
+          shouldUnlock = checkAssignmentStreak(assignments) >= (achievement.criteria.value || 5);
+          break;
+
+        case "assignment_master":
+          const completedAssignments = assignments.filter(a => a.completed);
+          shouldUnlock = completedAssignments.length >= (achievement.criteria.value || 50);
+          break;
+
+        case "multitasker":
+          if (newSession) {
+            shouldUnlock = checkMultitasker(sessions, newSession.date);
+          }
+          break;
+
+        case "subject_diversity":
+          shouldUnlock = checkSubjectDiversity(sessions) >= (achievement.criteria.value || 5);
+          break;
+
+        case "knowledge_seeker":
+          shouldUnlock = getTotalSubjectsStudied(sessions) >= (achievement.criteria.value || 10);
+          break;
+
         case "total_hours":
+        case "dedication":
+        case "legend":
           const totalSeconds = sessions.reduce((sum, session) => sum + session.duration, 0);
           shouldUnlock = totalSeconds >= (achievement.criteria.value || 0);
           break;
 
         case "session_count":
+        case "study_ninja":
+        case "century_club":
           shouldUnlock = sessions.length >= (achievement.criteria.value || 0);
+          break;
+
+        case "productivity_beast":
+          shouldUnlock = checkProductivityBeast(sessions);
           break;
       }
 
@@ -207,6 +269,129 @@ export const useAchievementChecker = () => {
         }
       }
       if (consecutive) return true;
+    }
+
+    return false;
+  };
+
+  const checkWeekendWarrior = (sessions: StudySession[]) => {
+    const dailyTotals = new Map<string, number>();
+    
+    sessions.forEach(session => {
+      const dateKey = startOfDay(parseISO(session.date)).toISOString();
+      const currentTotal = dailyTotals.get(dateKey) || 0;
+      dailyTotals.set(dateKey, currentTotal + session.duration);
+    });
+
+    const studyDays = Array.from(dailyTotals.entries())
+      .filter(([_, duration]) => duration >= 900)
+      .map(([date, _]) => new Date(date));
+
+    // Check if there's a weekend where both Saturday and Sunday were study days
+    const weekends = new Map<string, Set<number>>();
+    
+    studyDays.forEach(date => {
+      const weekStart = startOfWeek(date);
+      const weekKey = weekStart.toISOString();
+      const dayOfWeek = getDay(date); // 0 = Sunday, 6 = Saturday
+      
+      if (!weekends.has(weekKey)) {
+        weekends.set(weekKey, new Set());
+      }
+      
+      if (dayOfWeek === 0 || dayOfWeek === 6) { // Sunday or Saturday
+        weekends.get(weekKey)!.add(dayOfWeek);
+      }
+    });
+
+    // Check if any weekend has both Saturday and Sunday
+    for (const [_, days] of weekends) {
+      if (days.has(0) && days.has(6)) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  const checkAssignmentStreak = (assignments: Assignment[]) => {
+    const completedAssignments = assignments
+      .filter(a => a.completed && a.completedAt)
+      .sort((a, b) => new Date(a.completedAt!).getTime() - new Date(b.completedAt!).getTime());
+
+    if (completedAssignments.length < 5) return 0;
+
+    let maxStreak = 0;
+    let currentStreak = 0;
+
+    for (const assignment of completedAssignments) {
+      const completedAt = parseISO(assignment.completedAt!);
+      const dueDate = parseISO(assignment.dueDate);
+      
+      if (completedAt <= dueDate) {
+        currentStreak++;
+        maxStreak = Math.max(maxStreak, currentStreak);
+      } else {
+        currentStreak = 0;
+      }
+    }
+
+    return maxStreak;
+  };
+
+  const checkMultitasker = (sessions: StudySession[], sessionDate: string) => {
+    const sessionDay = startOfDay(parseISO(sessionDate));
+    const sameDaySessions = sessions.filter(session => {
+      const sessionDayCheck = startOfDay(parseISO(session.date));
+      return sessionDayCheck.getTime() === sessionDay.getTime();
+    });
+
+    const subjects = new Set(sameDaySessions.map(s => s.name || 'Untagged'));
+    return subjects.size >= 3;
+  };
+
+  const checkSubjectDiversity = (sessions: StudySession[]) => {
+    const weeklySubjects = new Map<string, Set<string>>();
+    
+    sessions.forEach(session => {
+      const weekStart = startOfWeek(parseISO(session.date));
+      const weekKey = weekStart.toISOString();
+      const subject = session.name || 'Untagged';
+      
+      if (!weeklySubjects.has(weekKey)) {
+        weeklySubjects.set(weekKey, new Set());
+      }
+      weeklySubjects.get(weekKey)!.add(subject);
+    });
+
+    let maxSubjectsInWeek = 0;
+    for (const [_, subjects] of weeklySubjects) {
+      maxSubjectsInWeek = Math.max(maxSubjectsInWeek, subjects.size);
+    }
+
+    return maxSubjectsInWeek;
+  };
+
+  const getTotalSubjectsStudied = (sessions: StudySession[]) => {
+    const allSubjects = new Set(sessions.map(s => s.name || 'Untagged'));
+    return allSubjects.size;
+  };
+
+  const checkProductivityBeast = (sessions: StudySession[]) => {
+    const weeklyTotals = new Map<string, number>();
+    
+    sessions.forEach(session => {
+      const weekStart = startOfWeek(parseISO(session.date));
+      const weekKey = weekStart.toISOString();
+      const currentTotal = weeklyTotals.get(weekKey) || 0;
+      weeklyTotals.set(weekKey, currentTotal + session.duration);
+    });
+
+    // Check if any week has 10+ hours (36000 seconds)
+    for (const [_, total] of weeklyTotals) {
+      if (total >= 36000) {
+        return true;
+      }
     }
 
     return false;
